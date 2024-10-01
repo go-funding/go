@@ -7,25 +7,22 @@ import (
 	"path"
 )
 
-func Map[From, To any](ts []From, fn func(From) To) []To {
-	result := make([]To, len(ts))
-	for i, t := range ts {
-		result[i] = fn(t)
-	}
-	return result
+func MapErr[From, To any](fromSlice []From, fn func(From, int) (To, error)) ([]To, error) {
+	return ReduceErr(fromSlice, func(from From, toSlice []To, fromIdx int) (_ []To, err error) {
+		toSlice[fromIdx], err = fn(from, fromIdx)
+		return toSlice, err
+	}, make([]To, len(fromSlice)))
 }
 
-func MapErr[From, To any](ts []From, fn func(From) (To, error)) ([]To, error) {
-	result := make([]To, len(ts))
-	for i, t := range ts {
-		val, err := fn(t)
-		result[i] = val
+func ReduceErr[From, To any](fromSlice []From, fn func(From, To, int) (To, error), initialValue To) (to To, err error) {
+	to = initialValue
+	for fromIndex, from := range fromSlice {
+		to, err = fn(from, to, fromIndex)
 		if err != nil {
-			return result, err
+			return
 		}
 	}
-
-	return result, nil
+	return
 }
 
 func GetFileFullPath(val string) (string, error) {
