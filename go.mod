@@ -2,7 +2,12 @@ module fuk-funding/go
 
 go 1.23.1
 
-require github.com/urfave/cli/v2 v2.27.4
+require (
+	github.com/IBM/fp-go v1.0.149
+	github.com/mattn/go-sqlite3 v1.14.23
+	github.com/urfave/cli/v2 v2.27.4
+	go.uber.org/multierr v1.11.0
+)
 
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.4 // indirect
