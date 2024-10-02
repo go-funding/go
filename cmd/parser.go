@@ -2,11 +2,14 @@ package main
 
 import (
 	flags2 "fuk-funding/go/cmd/flags"
+	"fuk-funding/go/ctx"
 	"fuk-funding/go/database"
 	"fuk-funding/go/fp"
 	"fuk-funding/go/services"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
+	"net/url"
 )
 
 // Simple checker
@@ -32,25 +35,41 @@ func (pc ParserCommand) CommandData() *cli.Command {
 	return cmd
 }
 
-func (pc ParserCommand) Run(ctx *cli.Context) (err error) {
-	db, err := database.NewSqlDatabase(flags2.GetSqlConfig(ctx))
+func (pc ParserCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err error) {
+	db, err := database.NewSqlDatabase(flags2.GetSqlConfig(cliCtx))
 	if err != nil {
 		return err
 	}
+	log := appCtx.Logger.Named(`[Parser Command]`)
+
 	defer multierr.AppendInvoke(&err, multierr.Invoke(db.Close))
+	if err = db.Connect(); err != nil {
+		log.Error(zap.Error(err))
+		return nil
+	}
 
-	filePaths, err := flags2.GetValidDomainFilePaths(ctx)
+	filePaths, err := flags2.GetValidDomainFilePaths(cliCtx)
 	if err != nil {
 		return err
 	}
 
-	domainsService := services.NewDomainsService(db)
+	domainsService := services.NewDomainsService(appCtx, db)
 	for _, filePath := range filePaths {
+		log.Debugf(`Processing %s`, filePath)
 		err := fp.IterateFileBySeparator(filePath, []byte("\n"), func(content []byte) error {
-			return domainsService.UpsertNewDomain(ctx.Context, string(content))
+			if len(content) == 0 {
+				return nil
+			}
+
+			urlData, err := url.Parse(string(content))
+			if err != nil {
+				return err
+			}
+
+			return domainsService.UpsertNewHost(cliCtx.Context, urlData.Host)
 		})
 		if err != nil {
-			return err
+			log.Errorf(`%s`, err)
 		}
 	}
 

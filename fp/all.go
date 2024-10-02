@@ -79,8 +79,14 @@ func IterateFileBytes(filePath string, f func(r byte) error) (err error) {
 func IterateFileBySeparator(filePath string, sep []byte, f func(bt []byte) error) error {
 	var buff []byte
 	err := IterateFileBytes(filePath, func(r byte) error {
+		buff = append(buff, r)
+
 		if IsEndsWith(buff, sep) {
 			defer func() { buff = []byte{} }()
+			if len(buff) == 0 {
+				return nil
+			}
+
 			buff = buff[0:SliceIdx(buff, -len(sep))]
 			return f(buff)
 		}
@@ -109,7 +115,11 @@ func SliceAt[Type any](v []Type, i int) Type {
 }
 
 func IsEndsWith[Type comparable](source []Type, ends []Type) bool {
-	if len(ends) < len(source) {
+	if len(ends) > len(source) {
+		return false
+	}
+
+	if len(ends) == 0 || len(source) == 0 {
 		return false
 	}
 

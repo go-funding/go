@@ -7,6 +7,7 @@ import (
 	"fuk-funding/go/database/dbtypes"
 	"fuk-funding/go/database/sqlite/types"
 	"fuk-funding/go/fp"
+	"github.com/Masterminds/squirrel"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/multierr"
 )
@@ -31,8 +32,8 @@ type Database struct {
 	db *sql.DB
 }
 
-func (db *Database) IterateRows(ctx context.Context, query string, cb func(rows *sql.Rows) error, args ...any) (err error) {
-	rows, err := db.db.QueryContext(ctx, query, args...)
+func (db *Database) IterateRows(ctx context.Context, q squirrel.Sqlizer, cb func(rows *sql.Rows) error) (err error) {
+	rows, err := db.QueryContext(ctx, q)
 	if err != nil {
 		return err
 	}
@@ -48,12 +49,22 @@ func (db *Database) IterateRows(ctx context.Context, query string, cb func(rows 
 	return nil
 }
 
-func (db *Database) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return db.db.ExecContext(ctx, query, args)
+func (db *Database) ExecContext(ctx context.Context, q squirrel.Sqlizer) (sql.Result, error) {
+	query, args, err := q.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	return db.db.ExecContext(ctx, query, args...)
 }
 
-func (db *Database) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return db.db.QueryContext(ctx, query, args)
+func (db *Database) QueryContext(ctx context.Context, q squirrel.Sqlizer) (*sql.Rows, error) {
+	query, args, err := q.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	return db.db.QueryContext(ctx, query, args...)
 }
 
 func (db *Database) Connect() (err error) {
@@ -66,5 +77,5 @@ func (db *Database) Connect() (err error) {
 }
 
 func (db *Database) Close() (err error) {
-	return db.Close()
+	return db.db.Close()
 }

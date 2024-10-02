@@ -1,37 +1,50 @@
 package main
 
 import (
-	"log"
-	"os"
-
+	"fuk-funding/go/ctx"
 	"github.com/urfave/cli/v2" // Have not checked it... Looks ok.
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"os"
 )
 
 type CommandRunnable interface {
-	Run(ctx *cli.Context) error
+	Run(appCtx *ctx.Context, cliCtx *cli.Context) error
 	CommandData() *cli.Command
 }
 type BaseCommand[Command CommandRunnable] struct {
+	ctx *ctx.Context
 }
 
 func (bc BaseCommand[Command]) Command() *cli.Command {
 	var cmd Command
 	baseCmd := cmd.CommandData()
-	baseCmd.Action = cmd.Run
+	baseCmd.Action = func(cliCtx *cli.Context) error {
+		return cmd.Run(bc.ctx, cliCtx)
+	}
 	return baseCmd
 }
 
-func AppendBaseCommand[Runner CommandRunnable](app *cli.App) {
-	var v BaseCommand[Runner]
+func AppendBaseCommand[Runner CommandRunnable](ctx *ctx.Context, app *cli.App) {
+	v := BaseCommand[Runner]{ctx}
 	app.Commands = append(app.Commands, v.Command())
 }
 
 func main() {
-	app := cli.NewApp()
-	AppendBaseCommand[ParserCommand](app)
-	AppendBaseCommand[InitDbCommand](app)
+	config := zap.NewDevelopmentConfig()
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	logger, _ := config.Build()
 
-	if err := app.Run(os.Args); err != nil {
-		log.Fatal(err)
+	defer logger.Sync()
+
+	sLogger := logger.Sugar()
+
+	appContext := &ctx.Context{Logger: sLogger}
+
+	cliApp := cli.NewApp()
+	AppendBaseCommand[ParserCommand](appContext, cliApp)
+
+	if err := cliApp.Run(os.Args); err != nil {
+		sLogger.Error(`cli app`, zap.Error(err))
 	}
 }
