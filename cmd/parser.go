@@ -3,6 +3,7 @@ package main
 import (
 	flags2 "fuk-funding/go/cmd/flags"
 	"fuk-funding/go/database"
+	"fuk-funding/go/fp"
 	"fuk-funding/go/services"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/multierr"
@@ -44,6 +45,14 @@ func (pc ParserCommand) Run(ctx *cli.Context) (err error) {
 	}
 
 	domainsService := services.NewDomainsService(db)
+	for _, filePath := range filePaths {
+		err := fp.IterateFileBySeparator(filePath, []byte("\n"), func(content []byte) error {
+			return domainsService.UpsertNewDomain(ctx.Context, string(content))
+		})
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

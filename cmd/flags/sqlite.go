@@ -22,8 +22,8 @@ func GetSqlConfig(ctx *cli.Context) *database.SqlDatabaseConfig {
 	}
 }
 
-func GetSqliteConfig(ctx *cli.Context) *sqlite.SqliteConfig {
-	return &sqlite.SqliteConfig{
+func GetSqliteConfig(ctx *cli.Context) *sqlite.Config {
+	return &sqlite.Config{
 		FilePath: ctx.Path(SqliteFileFlag.Name),
 	}
 }

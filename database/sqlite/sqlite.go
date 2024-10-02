@@ -1,17 +1,18 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fuk-funding/go/database"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type SqliteConfig struct {
+type Config struct {
 	FilePath string
 }
 
-func New(config *SqliteConfig) (database.SqlDatabase, error) {
+func New(config *Config) (database.Sql, error) {
 	if config == nil {
 		return nil, errors.New(`sqlite config must be set`)
 	}
@@ -27,15 +28,23 @@ type Database struct {
 	db *sql.DB
 }
 
-func (s *Database) Connect() (err error) {
-	s.db, err = sql.Open("sqlite3", s.FilePath)
+func (db *Database) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return db.db.ExecContext(ctx, query, args)
+}
+
+func (db *Database) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return db.db.QueryContext(ctx, query, args)
+}
+
+func (db *Database) Connect() (err error) {
+	db.db, err = sql.Open("sqlite3", db.FilePath)
 	if err != nil {
 		return err
 	}
 
-	return s.db.Ping()
+	return db.db.Ping()
 }
 
-func (s *Database) Close() (err error) {
-	return s.Close()
+func (db *Database) Close() (err error) {
+	return db.Close()
 }
