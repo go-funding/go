@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 )
 
 func MapErr[From, To any](fromSlice []From, fn func(From, int) (To, error)) ([]To, error) {
@@ -120,4 +121,12 @@ func IsEndsWith[Type comparable](source []Type, ends []Type) bool {
 	}
 
 	return true
+}
+
+func StrTrim(v string) string {
+	return strings.Trim(v, "\n\t \r")
+}
+
+func IsStrEmpty(v string) bool {
+	return v == ``
 }

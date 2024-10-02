@@ -4,18 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fuk-funding/go/database"
+	"fuk-funding/go/database/dbtypes"
+	"fuk-funding/go/database/sqlite/types"
+	"fuk-funding/go/fp"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/multierr"
 )
 
-type Config struct {
-	FilePath string
-}
-
-func New(config *Config) (database.Sql, error) {
+func New(config *sqlitetypes.Sqlite3Config) (dbtypes.Sql, error) {
 	if config == nil {
 		return nil, errors.New(`sqlite config must be set`)
+	}
+
+	if fp.IsStrEmpty(fp.StrTrim(config.FilePath)) {
+		return nil, errors.New(`file path to sqlite database must be passed`)
 	}
 
 	return &Database{

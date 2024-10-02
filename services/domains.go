@@ -2,11 +2,21 @@ package services
 
 import (
 	"context"
-	"fuk-funding/go/database"
+	"fuk-funding/go/database/dbtypes"
 )
 
 type Domains struct {
-	db database.Sql
+	db dbtypes.Sql
+}
+
+func (d Domains) CreateTable(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, `
+		create table domains (
+		  domain     text      primary key,
+		  created_at timestamp not null default now()
+		);
+	`)
+	return err
 }
 
 func (d *Domains) UpsertNewDomain(ctx context.Context, domain string) error {
@@ -14,6 +24,6 @@ func (d *Domains) UpsertNewDomain(ctx context.Context, domain string) error {
 	return err
 }
 
-func NewDomainsService(db database.Sql) *Domains {
+func NewDomainsService(db dbtypes.Sql) *Domains {
 	return &Domains{db}
 }

@@ -18,7 +18,7 @@ func GetDomainFiles(ctx *cli.Context) []string {
 }
 
 func GetValidDomainFilePaths(ctx *cli.Context) ([]string, error) {
-	return fp.MapErr(GetDomainFiles(ctx), func(path string) (string, error) {
+	return fp.MapErr(GetDomainFiles(ctx), func(path string, _ int) (string, error) {
 		fullPath, err := fp.GetFileFullPath(path)
 		if err != nil {
 			return fullPath, err

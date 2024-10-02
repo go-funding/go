@@ -2,8 +2,8 @@ package flags
 
 import (
 	"fuk-funding/go/config"
-	"fuk-funding/go/database"
-	"fuk-funding/go/database/sqlite"
+	"fuk-funding/go/database/dbtypes"
+	sqlitetypes "fuk-funding/go/database/sqlite/types"
 	"github.com/urfave/cli/v2"
 )
 
@@ -15,15 +15,15 @@ var SqliteFileFlag = &cli.PathFlag{
 	Category: "Database",
 }
 
-func GetSqlConfig(ctx *cli.Context) *database.SqlDatabaseConfig {
-	return &database.SqlDatabaseConfig{
-		Kind:    database.SqlDatabaseSqlite,
+func GetSqlConfig(ctx *cli.Context) *dbtypes.SqlDatabaseConfig {
+	return &dbtypes.SqlDatabaseConfig{
+		Kind:    sqlitetypes.Kind,
 		Sqlite3: GetSqliteConfig(ctx),
 	}
 }
 
-func GetSqliteConfig(ctx *cli.Context) *sqlite.Config {
-	return &sqlite.Config{
+func GetSqliteConfig(ctx *cli.Context) *sqlitetypes.Sqlite3Config {
+	return &sqlitetypes.Sqlite3Config{
 		FilePath: ctx.Path(SqliteFileFlag.Name),
 	}
 }

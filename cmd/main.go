@@ -29,6 +29,7 @@ func AppendBaseCommand[Runner CommandRunnable](app *cli.App) {
 func main() {
 	app := cli.NewApp()
 	AppendBaseCommand[ParserCommand](app)
+	AppendBaseCommand[InitDbCommand](app)
 
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
