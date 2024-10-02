@@ -43,6 +43,7 @@ func main() {
 
 	cliApp := cli.NewApp()
 	AppendBaseCommand[ParserCommand](appContext, cliApp)
+	AppendBaseCommand[DnsDumpsterCommand](appContext, cliApp)
 
 	if err := cliApp.Run(os.Args); err != nil {
 		sLogger.Error(`cli app`, zap.Error(err))
