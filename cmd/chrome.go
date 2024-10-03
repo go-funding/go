@@ -27,6 +27,10 @@ func (pc ChromeCommand) CommandData() *cli.Command {
 				Usage:    "Initial href of the page",
 				Required: true,
 			},
+			&cli.BoolFlag{
+				Name:  "not-mono",
+				Usage: "Not mono",
+			},
 		},
 	}
 
@@ -38,10 +42,15 @@ func (pc ChromeCommand) CommandData() *cli.Command {
 func (pc ChromeCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err error) {
 	log := appCtx.Logger.Named(`[Chrome command]`)
 
+	var baseDir = fmt.Sprintf(`./output/mono`)
+	if cliCtx.Bool("not-mono") {
+		baseDir = fmt.Sprintf(`./output/%v`, time.Now().UnixNano())
+	}
+
 	err = manualgooglechrome.Run(context.Background(), log, manualgooglechrome.ChromeOptions{
 		InitialHref: cliCtx.String("initial-href"),
 		UserDataDir: "./output/@user",
-		BaseDir:     fmt.Sprintf(`./output/%v`, time.Now().UnixNano()),
+		BaseDir:     baseDir,
 		Headless:    false,
 
 		IgnoreMimeType: []string{
@@ -54,6 +63,10 @@ func (pc ChromeCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err error
 			"apis.google.com",
 			"googletagmanager.com",
 			"www.gstatic.com",
+			"g.doubleclick.net",
+			"youtube.com",
+			"fontawesome.com",
+			"connect.facebook.net",
 		},
 		IgnoreNetworkResponseTypes: []network.ResourceType{
 			"Stylesheet",

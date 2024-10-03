@@ -13,6 +13,7 @@ require (
 	github.com/urfave/cli/v2 v2.27.4
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
+	golang.design/x/hotkey v0.4.1
 )
 
 require (
@@ -31,6 +32,7 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
+	golang.design/x/mainthread v0.3.0 // indirect
 	golang.org/x/net v0.29.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
 )

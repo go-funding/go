@@ -8,6 +8,7 @@ import (
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/css"
 	"github.com/chromedp/cdproto/dom"
+	"github.com/chromedp/cdproto/fetch"
 	log2 "github.com/chromedp/cdproto/log"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
@@ -19,8 +20,10 @@ import (
 	"net/url"
 	"path"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
+	"time"
 )
 
 type ChromeOptions struct {
@@ -34,33 +37,72 @@ type ChromeOptions struct {
 	IgnoreNetworkResponseTypes []network.ResourceType
 }
 
+func storeFileRecursive(log *zap.SugaredLogger, baseDir string, urlData *url.URL, suffix string, content []byte) (err error) {
+	hostDirName := urlData.Host
+	{
+		result := strings.Split(hostDirName, ".")
+		slices.Reverse(result)
+		hostDirName = strings.Join(result, ".")
+	}
+
+	filePath, err := url.JoinPath(hostDirName, urlData.Path)
+	if err != nil {
+		log.Info(zap.Error(err))
+		return
+	}
+
+	if strings.HasSuffix(filePath, "/") {
+		filePath = filePath + "index" + suffix
+	} else {
+		filePath = filePath + suffix
+	}
+
+	err = fp.StoreFileRecursive(path.Join(baseDir, filePath), content)
+	if err != nil {
+		log.Info(zap.Error(err))
+		return
+	}
+
+	return
+}
+
 func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *sync.WaitGroup, options ChromeOptions) func(ev any) {
-	loadData := func(requestId network.RequestID, requestUrl string) {
+	loadData := func(requestId network.RequestID, requestUrl string, suffix string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			urlData, err := url.Parse(requestUrl)
 
 			c := chromedp.FromContext(browserContext)
-			body, err := network.GetResponseBody(requestId).Do(cdp.WithExecutor(browserContext, c.Target))
+
+			var getResponse func(int, int, time.Duration) ([]byte, error)
+			getResponse = func(maxRetries int, currentRetry int, sleepDuration time.Duration) ([]byte, error) {
+				body, err := network.GetResponseBody(requestId).Do(cdp.WithExecutor(browserContext, c.Target))
+				if err != nil {
+					if currentRetry > maxRetries {
+						log.Info(zap.Error(err), zap.String("RequestID", string(requestId)), zap.String("URL", requestUrl))
+					}
+
+					if v, ok := err.(*cdproto.Error); ok {
+						if v.Code == -32000 {
+							time.Sleep(sleepDuration)
+							return getResponse(maxRetries, currentRetry+1, sleepDuration*2)
+						}
+					}
+				}
+
+				return body, err
+			}
+
+			body, err := getResponse(20, 0, 100*time.Millisecond)
 			if err != nil {
-				log.Info(zap.Error(err))
+				log.Info(zap.Error(err), zap.String("RequestID", string(requestId)), zap.String("URL", requestUrl))
 				return
 			}
 
-			filePath, err := url.JoinPath(urlData.Host, urlData.Path)
+			err = storeFileRecursive(log, options.BaseDir, urlData, suffix, body)
 			if err != nil {
-				log.Info(zap.Error(err))
-				return
-			}
-
-			if strings.HasSuffix(filePath, "/") {
-				filePath = filePath + "index"
-			}
-
-			err = fp.StoreFileRecursive(path.Join(options.BaseDir, filePath), body)
-			if err != nil {
-				log.Info(zap.Error(err))
+				log.Error(zap.Error(err))
 				return
 			}
 		}()
@@ -68,58 +110,59 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 
 	return func(ev any) {
 		switch e := ev.(type) {
+		case *fetch.EventRequestPaused:
+			go func() {
+				c := chromedp.FromContext(browserContext)
+				// note the executor should be "Browser" here
+				fetch.ContinueRequest(e.RequestID).Do(cdp.WithExecutor(browserContext, c.Browser))
+			}()
+
 		case *cdproto.Message:
-			//log.Println("[*cdproto.Message]", "Method: ", string(e.Method), "Result: ", string(e.Result), "Params: ", string(e.Params))
 			return
 
-		case *target.EventTargetCreated:
-			//log.Println("[*target.EventTargetCreated]", "TargetInfo: ", e.TargetInfo.Type, e.TargetInfo.Title)
-			return
-		case *target.EventTargetInfoChanged:
-			//log.Println("[*target.EventTargetInfoChanged]", "TargetInfo: ", e.TargetInfo.Type, e.TargetInfo.Title)
+		case *target.EventTargetCreated,
+			*target.EventAttachedToTarget,
+			*target.EventTargetInfoChanged,
+			*target.EventDetachedFromTarget,
+			*target.EventTargetDestroyed:
 			return
 
 		case *log2.EventEntryAdded:
-			//log.Println("[*log2.EventEntryAdded]", "Entry: ", e.Entry)
 			return
 
 		case *runtime.EventExecutionContextCreated:
-			//log.Println("[*runtime.EventExecutionContextCreated]", "Name: ", string(e.Context.AuxData))
 			return
 		case *runtime.EventExecutionContextsCleared:
-			//log.Println("[*runtime.EventExecutionContextsCleared]")
 			return
 		case *runtime.EventConsoleAPICalled:
-			//log.Println("[*runtime.EventConsoleAPICalled]")
+			return
+		case *runtime.EventExecutionContextDestroyed:
 			return
 
+		case *page.EventFrameDetached,
+			*page.EventFrameRequestedNavigation:
+			return
 		case *page.EventLifecycleEvent:
-			//log.Println("[*page.EventLifecycleEvent]", "Name: ", e.Name)
 			return
 		case *page.EventLoadEventFired:
-			//log.Println("[*page.EventLoadEventFired]", "Timestamp: ", e.Timestamp)
 			return
 		case *page.EventFrameStoppedLoading:
-			//log.Println("[*page.EventFrameStoppedLoading]", "FrameID: ", e.FrameID)
 			return
 		case *page.EventFrameNavigated:
-			//log.Println("[*page.EventFrameNavigated]", "Frame: ", e.Frame)
 			return
 		case *page.EventNavigatedWithinDocument:
-			//log.Println("[*page.EventNavigatedWithinDocument]", "E: ", e)
 			return
 		case *page.EventDomContentEventFired:
-			//log.Println("[*page.EventDomContentEventFired]", "Timestamp: ", e.Timestamp)
 			return
 		case *page.EventFrameStartedLoading:
-			//log.Println("[*page.EventFrameStartedLoading]", "FrameID: ", e.FrameID)
 			return
-		case *page.EventFrameResized:
-			//log.Println("[*page.EventFrameResized]", "E: ", e)
+		case *page.EventFrameResized, *page.EventFrameAttached:
 			return
 
 		case *network.EventLoadingFinished:
-			//log.Println("[*network.EventLoadingFinished]", "RequestID: ", e.RequestID)
+			return
+
+		case *network.EventLoadingFailed:
 			return
 
 		case *network.EventResponseReceived:
@@ -129,15 +172,10 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 				return
 			}
 
-			if fp.Contains(options.IgnoredHostsWithSubdomains, urlData.Host) || fp.SubdomainOf(options.IgnoredHostsWithSubdomains, urlData.Host) {
-				return
-			}
-
-			if fp.Contains(options.IgnoreNetworkResponseTypes, e.Type) {
-				return
-			}
-
-			if fp.Contains(options.IgnoreMimeType, e.Response.MimeType) {
+			if fp.Contains(options.IgnoredHostsWithSubdomains, urlData.Host) ||
+				fp.SubdomainOf(options.IgnoredHostsWithSubdomains, urlData.Host) ||
+				fp.Contains(options.IgnoreNetworkResponseTypes, e.Type) ||
+				fp.Contains(options.IgnoreMimeType, e.Response.MimeType) {
 				return
 			}
 
@@ -147,7 +185,13 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 				e.Response.URL,
 			)
 
-			loadData(e.RequestID, e.Response.URL)
+			var suffix string
+			switch e.Type {
+			case network.ResourceTypeDocument:
+				suffix = ".html"
+			}
+
+			loadData(e.RequestID, e.Response.URL, suffix)
 			return
 		case *network.EventRequestWillBeSentExtraInfo:
 			//log.Println("[*network.EventRequestWillBeSentExtraInfo]", "RequestID: ", e.RequestID)
@@ -162,23 +206,25 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 			//log.Println("[*network.EventRequestWillBeSent]", "RequestID: ", e.RequestID)
 			return
 
-		// Ignored network events
 		case *network.EventPolicyUpdated,
 			*network.EventResourceChangedPriority,
-			*network.EventRequestServedFromCache,
-			*network.EventLoadingFailed:
+			*network.EventRequestServedFromCache:
 			return
 
 		case *dom.EventChildNodeInserted,
 			*dom.EventChildNodeCountUpdated,
 			*dom.EventAttributeModified,
-			*dom.EventDocumentUpdated:
+			*dom.EventDocumentUpdated,
+			*dom.EventChildNodeRemoved,
+			*dom.EventPseudoElementRemoved,
+			*dom.EventSetChildNodes:
 			return
 
 		case *css.EventMediaQueryResultChanged,
 			*css.EventStyleSheetAdded,
 			*css.EventFontsUpdated,
-			*css.EventStyleSheetRemoved:
+			*css.EventStyleSheetRemoved,
+			*css.EventStyleSheetChanged:
 			return
 		default:
 			spew.Dump(e)
@@ -195,7 +241,6 @@ func Run(ctx context.Context, baseLog *zap.SugaredLogger, options ChromeOptions)
 		chromedp.DisableGPU,
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
-		chromedp.NoSandbox,
 		chromedp.Flag("ignore-certificate-errors", true),
 		chromedp.Flag("auto-open-devtools-for-tabs", true),
 		chromedp.Flag("headless", options.Headless),
@@ -215,8 +260,9 @@ func Run(ctx context.Context, baseLog *zap.SugaredLogger, options ChromeOptions)
 	// ensure that the browser process is started
 	if err := chromedp.Run(
 		taskCtx,
-		network.Enable(),
 		chromedp.Navigate(options.InitialHref),
+		chromedp.WaitReady("body"),
+		chromedp.Reload(),
 	); err != nil {
 		return err
 	}
@@ -225,9 +271,68 @@ func Run(ctx context.Context, baseLog *zap.SugaredLogger, options ChromeOptions)
 	log.Debugf(`All the information will be loaded to %s`, options.BaseDir)
 	log.Debugf(`When you are done, please click Ctrl+C to stop the process`)
 
+	go func() {
+		// Download all sources every 10 seconds
+		for {
+			select {
+			case <-time.After(10 * time.Second):
+				err := downloadAllSources(taskCtx, log, options)
+				if err != nil {
+					log.Error(zap.Error(err))
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	// wait for the user to stop the process
 	<-ctx.Done()
 	wg.Wait()
+
+	return nil
+}
+
+var now = time.Now().UnixNano()
+
+func downloadAllSources(ctx context.Context, log *zap.SugaredLogger, options ChromeOptions) error {
+	c := chromedp.FromContext(ctx)
+	runCtx := cdp.WithExecutor(ctx, c.Target)
+
+	log.Debugf(`Downloading all sources`)
+	sources, err := page.GetResourceTree().Do(runCtx)
+	if err != nil {
+		return err
+	}
+
+	spew.Dump(sources)
+
+	frameUrlParsed, err := url.Parse(sources.Frame.URL)
+	if err != nil {
+		return err
+	}
+
+	resultDir := fmt.Sprintf(`%s/sources/%v/%v`, options.BaseDir, frameUrlParsed.Host, now)
+	for _, resource := range sources.Resources {
+		log.Info(zap.String("Resource URL", resource.URL))
+		content, err := page.GetResourceContent(sources.Frame.ID, resource.URL).Do(runCtx)
+		if err != nil {
+			log.Info(zap.Error(err))
+			continue
+		}
+
+		urlData, err := url.Parse(resource.URL)
+		if err != nil {
+			log.Info(zap.Error(err))
+			continue
+		}
+
+		err = storeFileRecursive(log, resultDir, urlData, "", content)
+		if err != nil {
+			log.Error(zap.Error(err))
+			continue
+		}
+	}
 
 	return nil
 }
