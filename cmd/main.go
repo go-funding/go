@@ -5,6 +5,7 @@ import (
 	"github.com/urfave/cli/v2" // Have not checked it... Looks ok.
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"log"
 	"os"
 )
 
@@ -33,7 +34,10 @@ func AppendBaseCommand[Runner CommandRunnable](ctx *ctx.Context, app *cli.App) {
 func main() {
 	config := zap.NewDevelopmentConfig()
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	logger, _ := config.Build()
+	logger, err := config.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	defer logger.Sync()
 
@@ -44,6 +48,7 @@ func main() {
 	cliApp := cli.NewApp()
 	AppendBaseCommand[ParserCommand](appContext, cliApp)
 	AppendBaseCommand[DnsDumpsterCommand](appContext, cliApp)
+	AppendBaseCommand[ChromeCommand](appContext, cliApp)
 
 	if err := cliApp.Run(os.Args); err != nil {
 		sLogger.Error(`cli app`, zap.Error(err))

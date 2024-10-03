@@ -140,3 +140,37 @@ func StrTrim(v string) string {
 func IsStrEmpty(v string) bool {
 	return v == ``
 }
+
+func Contains[Type comparable](s []Type, e Type) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+
+	return false
+}
+
+func SubdomainOf(s []string, e string) bool {
+	for _, a := range s {
+		if strings.HasSuffix(e, "."+a) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func StoreFileRecursive(relativePathDeep string, contents []byte) error {
+	fullPath := path.Join(relativePathDeep)
+
+	if err := os.MkdirAll(path.Dir(fullPath), 0755); err != nil {
+		return fmt.Errorf("failed to create directories: %w", err)
+	}
+
+	if err := os.WriteFile(fullPath, contents, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
+}
