@@ -2,10 +2,10 @@ package main
 
 import (
 	"fuk-funding/go/ctx"
+	"fuk-funding/go/utils/printer"
+	"fuk-funding/go/utils/zaputils"
 	"github.com/urfave/cli/v2" // Have not checked it... Looks ok.
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"log"
 	"os"
 )
 
@@ -32,15 +32,10 @@ func AppendBaseCommand[Runner CommandRunnable](ctx *ctx.Context, app *cli.App) {
 }
 
 func main() {
-	config := zap.NewDevelopmentConfig()
-	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	logger, err := config.Build()
-	if err != nil {
-		log.Fatal(err)
-	}
+	printer.PrintLogo()
 
+	logger := zaputils.InitLogger()
 	defer logger.Sync()
-
 	sLogger := logger.Sugar()
 
 	appContext := &ctx.Context{Logger: sLogger}
@@ -49,6 +44,7 @@ func main() {
 	AppendBaseCommand[ParserCommand](appContext, cliApp)
 	AppendBaseCommand[DnsDumpsterCommand](appContext, cliApp)
 	AppendBaseCommand[ChromeCommand](appContext, cliApp)
+	AppendBaseCommand[WatchSourcemapCommand](appContext, cliApp)
 
 	if err := cliApp.Run(os.Args); err != nil {
 		sLogger.Error(`cli app`, zap.Error(err))

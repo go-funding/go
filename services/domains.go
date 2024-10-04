@@ -54,6 +54,6 @@ func (d *Domains) UpsertNewHost(ctx context.Context, domain string) error {
 
 func NewDomainsService(ctx *ctx.Context, db dbtypes.Sql) *Domains {
 	return &Domains{db, ctx.Logger.Named(
-		"[Domain Service]",
+		"svc[domains]",
 	)}
 }

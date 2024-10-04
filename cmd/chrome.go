@@ -40,7 +40,7 @@ func (pc ChromeCommand) CommandData() *cli.Command {
 }
 
 func (pc ChromeCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err error) {
-	log := appCtx.Logger.Named(`[Chrome command]`)
+	log := appCtx.Logger
 
 	var baseDir = fmt.Sprintf(`./output/mono`)
 	if cliCtx.Bool("not-mono") {
@@ -55,6 +55,7 @@ func (pc ChromeCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err error
 
 		IgnoreMimeType: []string{
 			"image/vnd.microsoft.icon", // favicon
+			"image/png",
 		},
 		IgnoredHostsWithSubdomains: []string{
 			"google-analytics.com",
@@ -67,6 +68,7 @@ func (pc ChromeCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err error
 			"youtube.com",
 			"fontawesome.com",
 			"connect.facebook.net",
+			"sentry.io",
 		},
 		IgnoreNetworkResponseTypes: []network.ResourceType{
 			"Stylesheet",

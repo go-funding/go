@@ -40,7 +40,7 @@ func (pc ParserCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err error
 	if err != nil {
 		return err
 	}
-	log := appCtx.Logger.Named(`[Parser Command]`)
+	log := appCtx.Logger.Named(`cmd[parser]`)
 
 	defer multierr.AppendInvoke(&err, multierr.Invoke(db.Close))
 	if err = db.Connect(); err != nil {

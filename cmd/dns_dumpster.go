@@ -29,7 +29,7 @@ func (pc DnsDumpsterCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err 
 	if err != nil {
 		return
 	}
-	log := appCtx.Logger.Named(`[Dns dumpster Command]`)
+	log := appCtx.Logger.Named(`cmd[dns_dumpster]`)
 
 	_, _ = db, log
 	return

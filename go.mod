@@ -5,6 +5,7 @@ go 1.23.1
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/PuerkitoBio/goquery v1.10.0
+	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/chromedp/cdproto v0.0.0-20240801214329-3f85d328b335
 	github.com/chromedp/chromedp v0.10.0
 	github.com/davecgh/go-spew v1.1.1
@@ -13,7 +14,7 @@ require (
 	github.com/urfave/cli/v2 v2.27.4
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
-	golang.design/x/hotkey v0.4.1
+	golang.org/x/term v0.24.0
 )
 
 require (
@@ -32,7 +33,6 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
-	golang.design/x/mainthread v0.3.0 // indirect
 	golang.org/x/net v0.29.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
 )

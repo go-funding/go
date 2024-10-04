@@ -4,19 +4,17 @@ import (
 	"context"
 	"fmt"
 	"fuk-funding/go/fp"
+	"fuk-funding/go/utils/printer"
 	"github.com/chromedp/cdproto"
 	"github.com/chromedp/cdproto/cdp"
-	"github.com/chromedp/cdproto/css"
-	"github.com/chromedp/cdproto/dom"
-	"github.com/chromedp/cdproto/fetch"
-	log2 "github.com/chromedp/cdproto/log"
+	"github.com/chromedp/cdproto/debugger"
 	"github.com/chromedp/cdproto/network"
-	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/cdproto/runtime"
-	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/fatih/color"
 	"go.uber.org/zap"
+	"io/ioutil"
+	"net/http"
 	"net/url"
 	"path"
 	"reflect"
@@ -47,7 +45,7 @@ func storeFileRecursive(log *zap.SugaredLogger, baseDir string, urlData *url.URL
 
 	filePath, err := url.JoinPath(hostDirName, urlData.Path)
 	if err != nil {
-		log.Info(zap.Error(err))
+		log.Info(err)
 		return
 	}
 
@@ -59,7 +57,7 @@ func storeFileRecursive(log *zap.SugaredLogger, baseDir string, urlData *url.URL
 
 	err = fp.StoreFileRecursive(path.Join(baseDir, filePath), content)
 	if err != nil {
-		log.Info(zap.Error(err))
+		log.Error(err)
 		return
 	}
 
@@ -67,20 +65,20 @@ func storeFileRecursive(log *zap.SugaredLogger, baseDir string, urlData *url.URL
 }
 
 func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *sync.WaitGroup, options ChromeOptions) func(ev any) {
-	loadData := func(requestId network.RequestID, requestUrl string, suffix string) {
+	networkStorage := NewChromeNetworkStorage()
+
+	loadData := func(request *ChromeRequest) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			urlData, err := url.Parse(requestUrl)
-
 			c := chromedp.FromContext(browserContext)
 
 			var getResponse func(int, int, time.Duration) ([]byte, error)
 			getResponse = func(maxRetries int, currentRetry int, sleepDuration time.Duration) ([]byte, error) {
-				body, err := network.GetResponseBody(requestId).Do(cdp.WithExecutor(browserContext, c.Target))
+				body, err := network.GetResponseBody(request.Id).Do(cdp.WithExecutor(browserContext, c.Target))
 				if err != nil {
 					if currentRetry > maxRetries {
-						log.Info(zap.Error(err), zap.String("RequestID", string(requestId)), zap.String("URL", requestUrl))
+						log.Info(err, "RequestID", string(request.Id), "URL", request.RequestUrl)
 					}
 
 					if v, ok := err.(*cdproto.Error); ok {
@@ -94,138 +92,91 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 				return body, err
 			}
 
-			body, err := getResponse(20, 0, 100*time.Millisecond)
-			if err != nil {
-				log.Info(zap.Error(err), zap.String("RequestID", string(requestId)), zap.String("URL", requestUrl))
+			saveResource(log, ResourceInformation{
+				Url: request.RequestUrl,
+				GetContent: func() (body []byte, err error) {
+					return getResponse(20, 0, 100*time.Millisecond)
+				},
+				Type:       request.Type,
+				StorageDir: options.BaseDir,
+			}, options)
+
+			if request.Type != network.ResourceTypeScript {
 				return
 			}
 
-			err = storeFileRecursive(log, options.BaseDir, urlData, suffix, body)
-			if err != nil {
-				log.Error(zap.Error(err))
-				return
+			if request.scriptId != nil && request.SourceMapURL != "" {
+				// Get the source map
+				// Get the source map
+				sourceMapURL := request.SourceMapURL
+				if !strings.HasPrefix(sourceMapURL, "http") {
+					baseURL, err := url.Parse(request.RequestUrl)
+					if err != nil {
+						log.Error("Failed to parse script URL", err)
+						return
+					}
+					sourceMapURL = baseURL.ResolveReference(&url.URL{Path: sourceMapURL}).String()
+				}
+
+				sourceMapBody, err := getSourceMap(browserContext, sourceMapURL)
+				if err != nil {
+					log.Warn("Failed to get source map using CDP, trying HTTP fallback: ", err)
+					sourceMapBody, err = getSourceMapHTTP(sourceMapURL)
+					if err != nil {
+						log.Error("Failed to get source map using HTTP fallback: ", err)
+						return
+					}
+				}
+
+				saveResource(log, ResourceInformation{
+					Url: sourceMapURL,
+					GetContent: func() (body []byte, err error) {
+						return sourceMapBody, nil
+					},
+					Type:       request.Type,
+					StorageDir: options.BaseDir,
+				}, options)
 			}
 		}()
 	}
 
 	return func(ev any) {
+		if reaction := networkStorage.ReactOn(ev); reaction.IsReacted() {
+			if reaction.Request() != nil {
+				go func() {
+					// Wait for the request to be finished
+					reaction.Request().Wait()
+					loadData(reaction.Request())
+				}()
+			}
+			return
+		}
+
+		// Print event type
+		processors := []func(any) (error, bool){
+			proceedNetworkEvents,
+			proceedDomEvents,
+			proceedCssEvents,
+			proceedTargetEvents,
+			proceedRuntimeEvents,
+			proceedPageEvents,
+			proceedOtherEvents(browserContext, log),
+		}
+
+		for _, processor := range processors {
+			var err error
+			var found bool
+
+			err, found = processor(ev)
+			if found || err != nil {
+				if err != nil {
+					log.Error(err)
+				}
+				return
+			}
+		}
+
 		switch e := ev.(type) {
-		case *fetch.EventRequestPaused:
-			go func() {
-				c := chromedp.FromContext(browserContext)
-				// note the executor should be "Browser" here
-				fetch.ContinueRequest(e.RequestID).Do(cdp.WithExecutor(browserContext, c.Browser))
-			}()
-
-		case *cdproto.Message:
-			return
-
-		case *target.EventTargetCreated,
-			*target.EventAttachedToTarget,
-			*target.EventTargetInfoChanged,
-			*target.EventDetachedFromTarget,
-			*target.EventTargetDestroyed:
-			return
-
-		case *log2.EventEntryAdded:
-			return
-
-		case *runtime.EventExecutionContextCreated:
-			return
-		case *runtime.EventExecutionContextsCleared:
-			return
-		case *runtime.EventConsoleAPICalled:
-			return
-		case *runtime.EventExecutionContextDestroyed:
-			return
-
-		case *page.EventFrameDetached,
-			*page.EventFrameRequestedNavigation:
-			return
-		case *page.EventLifecycleEvent:
-			return
-		case *page.EventLoadEventFired:
-			return
-		case *page.EventFrameStoppedLoading:
-			return
-		case *page.EventFrameNavigated:
-			return
-		case *page.EventNavigatedWithinDocument:
-			return
-		case *page.EventDomContentEventFired:
-			return
-		case *page.EventFrameStartedLoading:
-			return
-		case *page.EventFrameResized, *page.EventFrameAttached:
-			return
-
-		case *network.EventLoadingFinished:
-			return
-
-		case *network.EventLoadingFailed:
-			return
-
-		case *network.EventResponseReceived:
-			urlData, err := url.Parse(e.Response.URL)
-			if err != nil {
-				log.Info(zap.Error(err))
-				return
-			}
-
-			if fp.Contains(options.IgnoredHostsWithSubdomains, urlData.Host) ||
-				fp.SubdomainOf(options.IgnoredHostsWithSubdomains, urlData.Host) ||
-				fp.Contains(options.IgnoreNetworkResponseTypes, e.Type) ||
-				fp.Contains(options.IgnoreMimeType, e.Response.MimeType) {
-				return
-			}
-
-			log.Debugf(
-				"[*network.EventResponseReceived] Type: %s, URL: %s",
-				e.Type.String(),
-				e.Response.URL,
-			)
-
-			var suffix string
-			switch e.Type {
-			case network.ResourceTypeDocument:
-				suffix = ".html"
-			}
-
-			loadData(e.RequestID, e.Response.URL, suffix)
-			return
-		case *network.EventRequestWillBeSentExtraInfo:
-			//log.Println("[*network.EventRequestWillBeSentExtraInfo]", "RequestID: ", e.RequestID)
-			return
-		case *network.EventDataReceived:
-			//log.Println("[*network.EventDataReceived]", "RequestID: ", e.RequestID)
-			return
-		case *network.EventResponseReceivedExtraInfo:
-			//log.Println("[*network.EventResponseReceivedExtraInfo]", "RequestID: ", e.RequestID)
-			return
-		case *network.EventRequestWillBeSent:
-			//log.Println("[*network.EventRequestWillBeSent]", "RequestID: ", e.RequestID)
-			return
-
-		case *network.EventPolicyUpdated,
-			*network.EventResourceChangedPriority,
-			*network.EventRequestServedFromCache:
-			return
-
-		case *dom.EventChildNodeInserted,
-			*dom.EventChildNodeCountUpdated,
-			*dom.EventAttributeModified,
-			*dom.EventDocumentUpdated,
-			*dom.EventChildNodeRemoved,
-			*dom.EventPseudoElementRemoved,
-			*dom.EventSetChildNodes:
-			return
-
-		case *css.EventMediaQueryResultChanged,
-			*css.EventStyleSheetAdded,
-			*css.EventFontsUpdated,
-			*css.EventStyleSheetRemoved,
-			*css.EventStyleSheetChanged:
-			return
 		default:
 			spew.Dump(e)
 			fmt.Println("Unmapped", reflect.TypeOf(e))
@@ -234,17 +185,25 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 }
 
 func Run(ctx context.Context, baseLog *zap.SugaredLogger, options ChromeOptions) error {
-	log := baseLog.Named(`[Chrome browser]`)
+	log := baseLog.Named(`browser[chrome]`)
+
+	log.Debugf(`All the information will be loaded to %s`, color.RedString(options.BaseDir))
+	log.Debugf(`When you are done, please click %s to stop the process`, color.HiBlueString(`Ctrl+C`))
 
 	allocCtx, cancel := chromedp.NewExecAllocator(
 		ctx,
 		chromedp.DisableGPU,
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
+
 		chromedp.Flag("ignore-certificate-errors", true),
 		chromedp.Flag("auto-open-devtools-for-tabs", true),
 		chromedp.Flag("headless", options.Headless),
 		chromedp.Flag("user-data-dir", options.UserDataDir),
+
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-software-rasterizer", true),
 	)
 	defer cancel()
 
@@ -257,34 +216,28 @@ func Run(ctx context.Context, baseLog *zap.SugaredLogger, options ChromeOptions)
 	var wg sync.WaitGroup
 	chromedp.ListenTarget(taskCtx, targetListener(taskCtx, log, &wg, options))
 
-	// ensure that the browser process is started
 	if err := chromedp.Run(
 		taskCtx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			_, err := debugger.Enable().Do(ctx)
+			if err != nil {
+				return err
+			}
+			return nil
+		}),
+	); err != nil {
+		return err
+	}
+
+	if err := chromedp.Run(
+		taskCtx,
+		network.Enable(),
 		chromedp.Navigate(options.InitialHref),
 		chromedp.WaitReady("body"),
 		chromedp.Reload(),
 	); err != nil {
 		return err
 	}
-
-	log.Debugf(`Navigated to %s`, options.InitialHref)
-	log.Debugf(`All the information will be loaded to %s`, options.BaseDir)
-	log.Debugf(`When you are done, please click Ctrl+C to stop the process`)
-
-	go func() {
-		// Download all sources every 10 seconds
-		for {
-			select {
-			case <-time.After(10 * time.Second):
-				err := downloadAllSources(taskCtx, log, options)
-				if err != nil {
-					log.Error(zap.Error(err))
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
 
 	// wait for the user to stop the process
 	<-ctx.Done()
@@ -293,46 +246,98 @@ func Run(ctx context.Context, baseLog *zap.SugaredLogger, options ChromeOptions)
 	return nil
 }
 
-var now = time.Now().UnixNano()
+type ResourceInformation struct {
+	Url        string
+	GetContent func() ([]byte, error)
+	Type       network.ResourceType
+	StorageDir string
+}
 
-func downloadAllSources(ctx context.Context, log *zap.SugaredLogger, options ChromeOptions) error {
-	c := chromedp.FromContext(ctx)
-	runCtx := cdp.WithExecutor(ctx, c.Target)
+func cropUrl(url string) string {
+	if len(url) > 200 {
+		return url[:50] + "..."
+	}
 
-	log.Debugf(`Downloading all sources`)
-	sources, err := page.GetResourceTree().Do(runCtx)
+	return url
+}
+
+func saveResource(log *zap.SugaredLogger, info ResourceInformation, options ChromeOptions) {
+	if strings.HasPrefix(info.Url, "data:") {
+		mimeType := strings.Split(info.Url, ";")[0][5:]
+		if fp.Contains(options.IgnoreMimeType, mimeType) {
+			log.Debugf(
+				"%s mime type %s for URL %s",
+				color.WhiteString("Ignore resource"),
+				mimeType,
+				cropUrl(info.Url),
+			)
+			return
+		}
+	}
+
+	if fp.Contains(options.IgnoreNetworkResponseTypes, info.Type) {
+		log.Debugf(
+			"%s type %s for URL %s",
+			color.WhiteString("Ignore resource"),
+			printer.PadStringsToLength(10, info.Type.String()),
+			cropUrl(info.Url),
+		)
+		return
+	}
+
+	urlData, err := url.Parse(info.Url)
 	if err != nil {
-		return err
+		log.Error(err)
+		return
 	}
 
-	spew.Dump(sources)
+	if fp.Contains(options.IgnoredHostsWithSubdomains, urlData.Host) ||
+		fp.SubdomainOf(options.IgnoredHostsWithSubdomains, urlData.Host) {
+		return
+	}
 
-	frameUrlParsed, err := url.Parse(sources.Frame.URL)
+	content, err := info.GetContent()
 	if err != nil {
-		return err
+		log.Error(err)
+		return
 	}
 
-	resultDir := fmt.Sprintf(`%s/sources/%v/%v`, options.BaseDir, frameUrlParsed.Host, now)
-	for _, resource := range sources.Resources {
-		log.Info(zap.String("Resource URL", resource.URL))
-		content, err := page.GetResourceContent(sources.Frame.ID, resource.URL).Do(runCtx)
-		if err != nil {
-			log.Info(zap.Error(err))
-			continue
-		}
-
-		urlData, err := url.Parse(resource.URL)
-		if err != nil {
-			log.Info(zap.Error(err))
-			continue
-		}
-
-		err = storeFileRecursive(log, resultDir, urlData, "", content)
-		if err != nil {
-			log.Error(zap.Error(err))
-			continue
-		}
+	err = storeFileRecursive(log, options.BaseDir, urlData, "", content)
+	if err != nil {
+		log.Error("failed to store file: ", err)
+		return
 	}
 
-	return nil
+	log.Debugf("%s %s", color.GreenString("ResponseSaved"), cropUrl(info.Url))
+}
+
+func getSourceMap(ctx context.Context, sourceMapURL string) ([]byte, error) {
+	var responseBody []byte
+	err := chromedp.Run(ctx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			c := chromedp.FromContext(ctx)
+			params := network.GetResponseBody(network.RequestID(sourceMapURL))
+			body, err := params.Do(cdp.WithExecutor(ctx, c.Target))
+			if err != nil {
+				return err
+			}
+			responseBody = body
+			return nil
+		}),
+	)
+	return responseBody, err
+}
+
+func getSourceMapHTTP(sourceMapURL string) ([]byte, error) {
+	resp, err := http.Get(sourceMapURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP request failed with status code: %d", resp.StatusCode)
+	}
+
+	return ioutil.ReadAll(resp.Body)
 }
