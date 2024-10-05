@@ -5,7 +5,6 @@ import (
 	"fuk-funding/go/utils/printer"
 	"fuk-funding/go/utils/zaputils"
 	"github.com/urfave/cli/v2" // Have not checked it... Looks ok.
-	"go.uber.org/zap"
 	"os"
 )
 
@@ -44,9 +43,13 @@ func main() {
 	AppendBaseCommand[ParserCommand](appContext, cliApp)
 	AppendBaseCommand[DnsDumpsterCommand](appContext, cliApp)
 	AppendBaseCommand[ChromeCommand](appContext, cliApp)
+	AppendBaseCommand[AsyncChromeCommand](appContext, cliApp)
 	AppendBaseCommand[WatchSourcemapCommand](appContext, cliApp)
+	AppendBaseCommand[ProcessOutput](appContext, cliApp)
+	AppendBaseCommand[PublicSuffixDetector](appContext, cliApp)
+	AppendBaseCommand[ImportCrunchData](appContext, cliApp)
 
 	if err := cliApp.Run(os.Args); err != nil {
-		sLogger.Error(`cli app`, zap.Error(err))
+		sLogger.Error(`cli app `, err)
 	}
 }

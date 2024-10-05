@@ -1,6 +1,8 @@
 package zaputils
 
 import (
+	"fmt"
+	"fuk-funding/go/fp"
 	"github.com/fatih/color"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -53,19 +55,45 @@ func customNameEncoder(name string, enc zapcore.PrimitiveArrayEncoder) {
 	enc.AppendString(color.WhiteString(name))
 }
 
-func InitLogger() *zap.Logger {
-	config := zap.NewProductionEncoderConfig()
-	config.EncodeTime = customTimeEncoder
-	config.EncodeLevel = customLevelEncoder
-	config.EncodeCaller = customCallerEncoder
-	config.EncodeName = customNameEncoder
-	config.ConsoleSeparator = " "
+func fileCore(logFile string) zapcore.Core {
+	err := fp.StoreFileRecursive(logFile, []byte{})
+	if err != nil {
+		return nil
+	}
 
-	consoleEncoder := zapcore.NewConsoleEncoder(config)
-	core := zapcore.NewCore(
-		consoleEncoder,
-		zapcore.AddSync(os.Stdout),
-		zap.DebugLevel,
+	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("failed to open log file: %v\n", err)
+	}
+
+	fileConfig := zap.NewProductionEncoderConfig()
+	fileConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	fileConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+	fileConfig.EncodeCaller = zapcore.FullCallerEncoder
+	fileConfig.EncodeName = zapcore.FullNameEncoder
+
+	fileEncoder := zapcore.NewConsoleEncoder(fileConfig)
+
+	return zapcore.NewCore(fileEncoder, zapcore.AddSync(file), zap.DebugLevel)
+}
+
+func consoleCore() zapcore.Core {
+	// Console encoder config
+	consoleConfig := zap.NewProductionEncoderConfig()
+	consoleConfig.EncodeTime = customTimeEncoder
+	consoleConfig.EncodeLevel = customLevelEncoder
+	consoleConfig.EncodeCaller = customCallerEncoder
+	consoleConfig.EncodeName = customNameEncoder
+	consoleConfig.ConsoleSeparator = " "
+
+	consoleEncoder := zapcore.NewConsoleEncoder(consoleConfig)
+	return zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zap.DebugLevel)
+}
+
+func InitLogger() *zap.Logger {
+	core := zapcore.NewTee(
+		consoleCore(),
+		//fileCore(filepath.Join("./logs/general.log")),
 	)
 
 	return zap.New(core, zap.AddCaller())

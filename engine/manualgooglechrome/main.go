@@ -3,7 +3,9 @@ package manualgooglechrome
 import (
 	"context"
 	"fmt"
+	"fuk-funding/go/config"
 	"fuk-funding/go/fp"
+	"fuk-funding/go/utils"
 	"fuk-funding/go/utils/printer"
 	"github.com/chromedp/cdproto"
 	"github.com/chromedp/cdproto/cdp"
@@ -18,7 +20,6 @@ import (
 	"net/url"
 	"path"
 	"reflect"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ type ChromeOptions struct {
 	UserDataDir string
 	BaseDir     string
 	Headless    bool
+	Timeout     time.Duration
 
 	IgnoreMimeType             []string
 	IgnoredHostsWithSubdomains []string
@@ -36,12 +38,7 @@ type ChromeOptions struct {
 }
 
 func storeFileRecursive(log *zap.SugaredLogger, baseDir string, urlData *url.URL, suffix string, content []byte) (err error) {
-	hostDirName := urlData.Host
-	{
-		result := strings.Split(hostDirName, ".")
-		slices.Reverse(result)
-		hostDirName = strings.Join(result, ".")
-	}
+	hostDirName := utils.UrlDirname(urlData)
 
 	filePath, err := url.JoinPath(hostDirName, urlData.Path)
 	if err != nil {
@@ -78,7 +75,7 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 				body, err := network.GetResponseBody(request.Id).Do(cdp.WithExecutor(browserContext, c.Target))
 				if err != nil {
 					if currentRetry > maxRetries {
-						log.Info(err, "RequestID", string(request.Id), "URL", request.RequestUrl)
+						return nil, err
 					}
 
 					if v, ok := err.(*cdproto.Error); ok {
@@ -95,7 +92,7 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 			saveResource(log, ResourceInformation{
 				Url: request.RequestUrl,
 				GetContent: func() (body []byte, err error) {
-					return getResponse(20, 0, 100*time.Millisecond)
+					return getResponse(3, 0, 100*time.Millisecond)
 				},
 				Type:       request.Type,
 				StorageDir: options.BaseDir,
@@ -188,7 +185,6 @@ func Run(ctx context.Context, baseLog *zap.SugaredLogger, options ChromeOptions)
 	log := baseLog.Named(`browser[chrome]`)
 
 	log.Debugf(`All the information will be loaded to %s`, color.RedString(options.BaseDir))
-	log.Debugf(`When you are done, please click %s to stop the process`, color.HiBlueString(`Ctrl+C`))
 
 	allocCtx, cancel := chromedp.NewExecAllocator(
 		ctx,
@@ -239,8 +235,14 @@ func Run(ctx context.Context, baseLog *zap.SugaredLogger, options ChromeOptions)
 		return err
 	}
 
-	// wait for the user to stop the process
-	<-ctx.Done()
+	if options.Timeout > 0 {
+		time.Sleep(options.Timeout)
+	} else {
+		// wait for the user to stop the process
+		log.Debugf(`When you are done, please click %s to stop the process`, color.HiBlueString(`Ctrl+C`))
+		<-ctx.Done()
+	}
+
 	wg.Wait()
 
 	return nil
@@ -265,6 +267,8 @@ func saveResource(log *zap.SugaredLogger, info ResourceInformation, options Chro
 	if strings.HasPrefix(info.Url, "data:") {
 		mimeType := strings.Split(info.Url, ";")[0][5:]
 		if fp.Contains(options.IgnoreMimeType, mimeType) {
+			return
+
 			log.Debugf(
 				"%s mime type %s for URL %s",
 				color.WhiteString("Ignore resource"),
@@ -276,6 +280,8 @@ func saveResource(log *zap.SugaredLogger, info ResourceInformation, options Chro
 	}
 
 	if fp.Contains(options.IgnoreNetworkResponseTypes, info.Type) {
+		return
+
 		log.Debugf(
 			"%s type %s for URL %s",
 			color.WhiteString("Ignore resource"),
@@ -283,6 +289,20 @@ func saveResource(log *zap.SugaredLogger, info ResourceInformation, options Chro
 			cropUrl(info.Url),
 		)
 		return
+	}
+
+	// config.IgnoredPathPatterns []*regexp.Regexp
+	for _, pathPattern := range config.IgnoredPathPatterns {
+		if pathPattern.MatchString(info.Url) {
+			return
+
+			log.Debugf(
+				"%s URL %s",
+				color.WhiteString("Ignore resource"),
+				cropUrl(info.Url),
+			)
+			return
+		}
 	}
 
 	urlData, err := url.Parse(info.Url)

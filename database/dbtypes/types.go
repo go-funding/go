@@ -12,6 +12,7 @@ type Sql interface {
 	Close() error
 	IterateRows(ctx context.Context, q squirrel.Sqlizer, cb func(rows *sql.Rows) error) error
 	ExecContext(ctx context.Context, q squirrel.Sqlizer) (sql.Result, error)
+	QueryRowContext(ctx context.Context, q squirrel.Sqlizer) (*sql.Row, error)
 }
 
 type SqlDatabaseKind string

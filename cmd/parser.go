@@ -53,7 +53,7 @@ func (pc ParserCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err error
 		return err
 	}
 
-	domainsService := services.NewDomainsService(appCtx, db)
+	domainsService := services.NewDomainsService(appCtx.Logger, db)
 	for _, filePath := range filePaths {
 		log.Debugf(`Processing %s`, filePath)
 		err := fp.IterateFileBySeparator(filePath, []byte("\n"), func(content []byte) error {

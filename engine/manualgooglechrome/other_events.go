@@ -7,6 +7,7 @@ import (
 	"github.com/chromedp/cdproto/css"
 	"github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/cdproto/fetch"
+	"github.com/chromedp/cdproto/inspector"
 	log2 "github.com/chromedp/cdproto/log"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
@@ -23,8 +24,12 @@ func proceedDomEvents(ev any) (err error, found bool) {
 		*dom.EventAttributeModified,
 		*dom.EventDocumentUpdated,
 		*dom.EventChildNodeRemoved,
-		*dom.EventPseudoElementRemoved,
-		*dom.EventSetChildNodes:
+		*dom.EventSetChildNodes,
+		*dom.EventShadowRootPopped,
+		*dom.EventShadowRootPushed,
+		*dom.EventInlineStyleInvalidated,
+		*dom.EventPseudoElementAdded,
+		*dom.EventPseudoElementRemoved:
 		return nil, true
 	}
 	return nil, false
@@ -66,6 +71,7 @@ func proceedRuntimeEvents(ev any) (err error, found bool) {
 	switch ev.(type) {
 	case *runtime.EventExecutionContextCreated,
 		*runtime.EventExecutionContextsCleared,
+		*runtime.EventExceptionThrown,
 		*runtime.EventConsoleAPICalled,
 		*runtime.EventExecutionContextDestroyed:
 		return nil, true
@@ -94,6 +100,13 @@ func proceedPageEvents(ev any) (err error, found bool) {
 func proceedOtherEvents(browserContext context.Context, log *zap.SugaredLogger) func(any) (err error, found bool) {
 	return func(ev any) (err error, found bool) {
 		switch e := ev.(type) {
+		case *inspector.EventDetached:
+			return
+
+		case *network.EventWebSocketFrameSent,
+			*network.EventWebSocketCreated:
+			return
+
 		case *fetch.EventRequestPaused:
 			go func() {
 				c := chromedp.FromContext(browserContext)

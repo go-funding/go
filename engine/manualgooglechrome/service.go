@@ -96,7 +96,14 @@ func (cns *ChromeNetworkStorage) ReactOn(ev any) (rr ReactOnResult) {
 	switch e := ev.(type) {
 	case *network.EventRequestWillBeSentExtraInfo,
 		*network.EventResponseReceivedExtraInfo,
+		*network.EventResponseReceivedEarlyHints,
 		*network.EventRequestServedFromCache,
+		*network.EventWebSocketFrameSent,
+		*network.EventWebSocketClosed,
+		*network.EventWebSocketFrameReceived,
+		*network.EventWebSocketFrameError,
+		*network.EventWebSocketWillSendHandshakeRequest,
+		*network.EventWebSocketHandshakeResponseReceived,
 		*network.EventPolicyUpdated:
 		return
 
@@ -111,6 +118,8 @@ func (cns *ChromeNetworkStorage) ReactOn(ev any) (rr ReactOnResult) {
 	case *network.EventDataReceived:
 		return
 
+	case *debugger.EventScriptFailedToParse:
+		return
 	case *debugger.EventScriptParsed:
 		if e.URL == "" || e.SourceMapURL == "" {
 			return

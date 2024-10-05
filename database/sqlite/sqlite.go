@@ -58,6 +58,15 @@ func (db *Database) ExecContext(ctx context.Context, q squirrel.Sqlizer) (sql.Re
 	return db.db.ExecContext(ctx, query, args...)
 }
 
+func (db *Database) QueryRowContext(ctx context.Context, q squirrel.Sqlizer) (*sql.Row, error) {
+	query, args, err := q.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	return db.db.QueryRowContext(ctx, query, args...), nil
+}
+
 func (db *Database) QueryContext(ctx context.Context, q squirrel.Sqlizer) (*sql.Rows, error) {
 	query, args, err := q.ToSql()
 	if err != nil {

@@ -11,10 +11,35 @@ import (
 	"strings"
 )
 
+func ForEachErr1[Type any, Type2 any](slice []Type, v2 Type2, fn func(Type2, Type, int) error) error {
+	for i, v := range slice {
+		if err := fn(v2, v, i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ForEachErr[Type any](slice []Type, fn func(Type, int) error) error {
+	for i, v := range slice {
+		if err := fn(v, i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func MapErr[From, To any](fromSlice []From, fn func(From, int) (To, error)) ([]To, error) {
 	return ReduceErr(fromSlice, func(from From, toSlice []To, fromIdx int) (_ []To, err error) {
 		toSlice[fromIdx], err = fn(from, fromIdx)
 		return toSlice, err
+	}, make([]To, len(fromSlice)))
+}
+
+func Map[From, To any](fromSlice []From, fn func(From, int) To) []To {
+	return Reduce(fromSlice, func(from From, toSlice []To, fromIdx int) (_ []To) {
+		toSlice[fromIdx] = fn(from, fromIdx)
+		return toSlice
 	}, make([]To, len(fromSlice)))
 }
 
@@ -25,6 +50,14 @@ func ReduceErr[From, To any](fromSlice []From, fn func(From, To, int) (To, error
 		if err != nil {
 			return
 		}
+	}
+	return
+}
+
+func Reduce[From, To any](fromSlice []From, fn func(From, To, int) To, initialValue To) (to To) {
+	to = initialValue
+	for fromIndex, from := range fromSlice {
+		to = fn(from, to, fromIndex)
 	}
 	return
 }
