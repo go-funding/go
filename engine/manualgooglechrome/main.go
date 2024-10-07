@@ -138,9 +138,14 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 	}
 
 	return func(ev any) {
+		wg.Add(1)
+		defer wg.Done()
+
 		if reaction := networkStorage.ReactOn(ev); reaction.IsReacted() {
 			if reaction.Request() != nil {
+				wg.Add(1)
 				go func() {
+					defer wg.Done()
 					// Wait for the request to be finished
 					reaction.Request().Wait()
 					loadData(reaction.Request())
@@ -183,8 +188,6 @@ func targetListener(browserContext context.Context, log *zap.SugaredLogger, wg *
 
 func Run(ctx context.Context, baseLog *zap.SugaredLogger, options ChromeOptions) error {
 	log := baseLog.Named(`browser[chrome]`)
-
-	log.Debugf(`All the information will be loaded to %s`, color.RedString(options.BaseDir))
 
 	allocCtx, cancel := chromedp.NewExecAllocator(
 		ctx,
@@ -328,7 +331,7 @@ func saveResource(log *zap.SugaredLogger, info ResourceInformation, options Chro
 		return
 	}
 
-	log.Debugf("%s %s", color.GreenString("ResponseSaved"), cropUrl(info.Url))
+	log.Debugf("%s %s (%s)", color.GreenString("ResponseSaved"), info.Type, cropUrl(info.Url))
 }
 
 func getSourceMap(ctx context.Context, sourceMapURL string) ([]byte, error) {

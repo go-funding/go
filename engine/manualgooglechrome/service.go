@@ -104,7 +104,9 @@ func (cns *ChromeNetworkStorage) ReactOn(ev any) (rr ReactOnResult) {
 		*network.EventWebSocketFrameError,
 		*network.EventWebSocketWillSendHandshakeRequest,
 		*network.EventWebSocketHandshakeResponseReceived,
-		*network.EventPolicyUpdated:
+		*network.EventPolicyUpdated,
+		*network.EventWebSocketCreated,
+		*network.EventEventSourceMessageReceived:
 		return
 
 	case *network.EventResponseReceived:

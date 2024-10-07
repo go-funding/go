@@ -157,6 +157,64 @@ func (pr ProcessOutputRunner) processSourceMapsExposure(ctx context.Context, dom
 	return nil
 }
 
+const flagNextJsBuildDir = "nextjs-build-dir"
+
+func (pr ProcessOutputRunner) processFlagNextJsBuildDir(ctx context.Context, domainId int, dirname string) error {
+	log := pr.Log.Named(color.BlueString(flagNextJsBuildDir))
+
+	has, err := pr.FlagsService.HasFlag(ctx, domainId, flagNextJsBuildDir)
+	if err != nil {
+		log.Error("error", err)
+		return err
+	}
+
+	if has {
+		return nil
+	}
+
+	path, err := findNextJsBuildDir(dirname)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Warn("not found")
+			return nil
+		}
+
+		log.Error("error while walking", err)
+		return err
+	}
+
+	log.Infof("found %s", color.GreenString(path))
+
+	err = pr.FlagsService.UpsertFlag(ctx, domainId, flagNextJsBuildDir, path)
+	if err != nil {
+		log.Error("error", err)
+		return err
+	}
+
+	return nil
+}
+
+func findNextJsBuildDir(root string) (string, error) {
+	var buildDir string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.Name() == ".next" || info.Name() == "_next" {
+			buildDir = path
+			return filepath.SkipDir
+		}
+
+		return nil
+	})
+
+	if buildDir == "" {
+		return "", os.ErrNotExist
+	}
+	return buildDir, err
+}
+
 const flagCodeNextJsManifest = "nextjs-build-manifest"
 
 func (pr ProcessOutputRunner) processFlagNextJsManifest(ctx context.Context, domainId int, dirname string) error {
@@ -257,6 +315,41 @@ func (pr ProcessOutputRunner) processWPDirectories(ctx context.Context, domainId
 	if len(foundDirs) > 0 {
 		dirList := strings.Join(foundDirs, ", ")
 		err = pr.FlagsService.UpsertFlag(ctx, domainId, flagWPDirectories, dirList)
+		if err != nil {
+			log.Error("error", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+type Flagger struct {
+	Log *zap.SugaredLogger
+	Sql dbtypes.Sql
+
+	FlagsService *services.Flags
+
+	FlagName string
+
+	Checker func(cliCtx *cli.Context, domainId int) bool
+}
+
+func (f Flagger) Run(cliCtx *cli.Context, domainId int) error {
+	log := f.Log.Named(f.FlagName)
+
+	has, err := f.FlagsService.HasFlag(cliCtx.Context, domainId, flagWPDirectories)
+	if err != nil {
+		log.Error("error", err)
+		return err
+	}
+
+	if has {
+		return nil
+	}
+
+	if f.Checker(cliCtx, domainId) {
+		err = f.FlagsService.UpsertFlag(cliCtx.Context, domainId, f.FlagName, "")
 		if err != nil {
 			log.Error("error", err)
 			return err

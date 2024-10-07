@@ -4,8 +4,8 @@ import (
 	flags2 "fuk-funding/go/cmd/flags"
 	"fuk-funding/go/ctx"
 	"fuk-funding/go/database"
-	"fuk-funding/go/fp"
 	"fuk-funding/go/services"
+	"fuk-funding/go/utils/ufiles"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
@@ -56,7 +56,7 @@ func (pc ParserCommand) Run(appCtx *ctx.Context, cliCtx *cli.Context) (err error
 	domainsService := services.NewDomainsService(appCtx.Logger, db)
 	for _, filePath := range filePaths {
 		log.Debugf(`Processing %s`, filePath)
-		err := fp.IterateFileBySeparator(filePath, []byte("\n"), func(content []byte) error {
+		err := ufiles.IterateFileBySeparator(filePath, []byte("\n"), func(content []byte) error {
 			if len(content) == 0 {
 				return nil
 			}

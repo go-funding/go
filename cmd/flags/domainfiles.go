@@ -3,6 +3,7 @@ package flags
 import (
 	"fuk-funding/go/config"
 	"fuk-funding/go/fp"
+	"fuk-funding/go/utils/ufiles"
 	"github.com/urfave/cli/v2"
 )
 
@@ -19,10 +20,10 @@ func GetDomainFiles(ctx *cli.Context) []string {
 
 func GetValidDomainFilePaths(ctx *cli.Context) ([]string, error) {
 	return fp.MapErr(GetDomainFiles(ctx), func(path string, _ int) (string, error) {
-		fullPath, err := fp.GetFileFullPath(path)
+		fullPath, err := ufiles.GetFileFullPath(path)
 		if err != nil {
 			return fullPath, err
 		}
-		return fullPath, fp.EnsureFileExists(fullPath)
+		return fullPath, ufiles.EnsureFileExists(fullPath)
 	})
 }

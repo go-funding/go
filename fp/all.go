@@ -1,11 +1,8 @@
 package fp
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"go.uber.org/multierr"
-	"io"
 	"os"
 	"path"
 	"strings"
@@ -60,82 +57,6 @@ func Reduce[From, To any](fromSlice []From, fn func(From, To, int) To, initialVa
 		to = fn(from, to, fromIndex)
 	}
 	return
-}
-
-func GetFileFullPath(val string) (string, error) {
-	if val[0] == '/' {
-		return val, nil
-	}
-
-	ex, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	return path.Join(ex, val), nil
-}
-
-func EnsureFileExists(file string) error {
-	if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
-		return errors.New(fmt.Sprintf("File %s does not exists", file))
-	}
-	return nil
-}
-
-func IterateFileBytes(filePath string, f func(r byte) error) (err error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer multierr.AppendInvoke(&err, multierr.Close(file))
-
-	r := bufio.NewReader(file)
-	for {
-		byteVal, err := r.ReadByte()
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			return err
-		}
-
-		err = f(byteVal)
-		if err != nil {
-			return err
-		}
-	}
-
-	return err
-}
-
-func IterateFileBySeparator(filePath string, sep []byte, f func(bt []byte) error) error {
-	var buff []byte
-	err := IterateFileBytes(filePath, func(r byte) error {
-		buff = append(buff, r)
-
-		if IsEndsWith(buff, sep) {
-			defer func() { buff = []byte{} }()
-			if len(buff) == 0 {
-				return nil
-			}
-
-			buff = buff[0:SliceIdx(buff, -len(sep))]
-			return f(buff)
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return err
-	}
-
-	if len(buff) > 0 {
-		return f(buff)
-	}
-
-	return nil
 }
 
 func SliceIdx[Type any](v []Type, i int) int {
@@ -197,6 +118,10 @@ func SubdomainOf(s []string, e string) bool {
 func StoreFileRecursive(relativePathDeep string, contents []byte) error {
 	fullPath := path.Join(relativePathDeep)
 
+	if len(fullPath) == 0 || len(fullPath) > 500 {
+		return fmt.Errorf("invalid path: %s", fullPath[:200])
+	}
+
 	if err := os.MkdirAll(path.Dir(fullPath), 0755); err != nil {
 		return fmt.Errorf("failed to create directories: %w", err)
 	}
@@ -206,4 +131,27 @@ func StoreFileRecursive(relativePathDeep string, contents []byte) error {
 	}
 
 	return nil
+}
+
+var ErrStopIteration = errors.New("stop iteration")
+
+type Iterator[Type any] interface {
+	Next() (Type, error)
+}
+
+func Iterate[Type any](iter Iterator[Type], fn func(Type) error) error {
+	for {
+		v, err := iter.Next()
+		if errors.Is(err, ErrStopIteration) {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if err := fn(v); err != nil {
+			return err
+		}
+	}
 }

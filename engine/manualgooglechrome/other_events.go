@@ -29,7 +29,8 @@ func proceedDomEvents(ev any) (err error, found bool) {
 		*dom.EventShadowRootPushed,
 		*dom.EventInlineStyleInvalidated,
 		*dom.EventPseudoElementAdded,
-		*dom.EventPseudoElementRemoved:
+		*dom.EventPseudoElementRemoved,
+		*dom.EventAttributeRemoved:
 		return nil, true
 	}
 	return nil, false
@@ -91,7 +92,8 @@ func proceedPageEvents(ev any) (err error, found bool) {
 		*page.EventDomContentEventFired,
 		*page.EventFrameStartedLoading,
 		*page.EventFrameResized,
-		*page.EventFrameAttached:
+		*page.EventFrameAttached,
+		*page.EventDocumentOpened:
 		return nil, true
 	}
 	return nil, false

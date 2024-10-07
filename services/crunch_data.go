@@ -33,7 +33,7 @@ func (c *CrunchDataService) Insert(ctx context.Context, data *CrunchDataModel) e
 	query := sq.Insert("crunch_data").
 		Columns("name", "number_of_employees", "total_investment_amount_usd", "last_investment_amount_usd", "crunchbase_url", "linkedin_url", "website_url", "founded_at", "website_host").
 		Values(data.Name, data.NumberEmployees, data.TotalFundingAmountUSD, data.LastFundingAmountUSD, data.CrunchbaseURL, data.LinkedInURL, data.WebsiteURL, data.FoundedDate, data.WebsiteHost).
-		Suffix("RETURNING id")
+		Suffix("on conflict (crunchbase_url) do update set name = excluded.name, number_of_employees = excluded.number_of_employees, total_investment_amount_usd = excluded.total_investment_amount_usd, last_investment_amount_usd = excluded.last_investment_amount_usd, linkedin_url = excluded.linkedin_url, website_url = excluded.website_url, founded_at = excluded.founded_at, website_host = excluded.website_host RETURNING id")
 
 	rows, err := c.db.QueryRowContext(ctx, query)
 	if err != nil {
