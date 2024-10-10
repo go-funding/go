@@ -12,13 +12,16 @@ require (
 	github.com/fatih/color v1.17.0
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
 	github.com/mattn/go-sqlite3 v1.14.23
+	github.com/mgorunuch/gosuper v0.0.0-00010101000000-000000000000
 	github.com/urfave/cli/v2 v2.27.4
 	github.com/weppos/publicsuffix-go v0.40.2
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.8.0
-	golang.org/x/term v0.24.0
+	golang.org/x/term v0.25.0
 )
+
+replace github.com/mgorunuch/gosuper => /Users/mgorunuch/projects/go-super
 
 require (
 	github.com/andybalholm/cascadia v1.3.2 // indirect
@@ -34,9 +37,8 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	golang.org/x/net v0.29.0 // indirect
-	golang.org/x/sys v0.25.0 // indirect
+	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/text v0.18.0 // indirect
 )

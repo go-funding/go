@@ -113,6 +113,15 @@ func (d *Domains) GetDomainID(ctx context.Context, domain string) (int, error) {
 	return id, nil
 }
 
+func (d *Domains) UpsertGetDomain(ctx context.Context, domain string) (int, error) {
+	err := d.UpsertNewHost(ctx, domain)
+	if err != nil {
+		return 0, err
+	}
+
+	return d.GetDomainID(ctx, domain)
+}
+
 func (d *Domains) UpsertNewHost(ctx context.Context, domain string) error {
 	action := upsertedText
 	defer d.log.Debugf(`%s processing domain %s`, action, domain)
