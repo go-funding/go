@@ -1,13 +1,14 @@
 package main
 
 import (
-	file_spawners "fuk-funding/go/app/cmd/file-spawners"
+	"fmt"
 	"fuk-funding/go/app/cmd/topics"
 	"fuk-funding/go/engine/application"
 	"fuk-funding/go/utils/printer"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/mgorunuch/gosuper"
 	"log"
+	"net"
 )
 
 func main() {
@@ -21,17 +22,39 @@ func main() {
 	})
 	app.Queue.AddConsumer(&cons)
 
-	file_spawners.TxtFileDomainCallback("domains.txt", func(domain string) {
-		err := app.Queue.Push(topics.TopicNewDomain{Domain: domain})
+	listener, err := net.Listen("tcp", "localhost:8080")
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer listener.Close()
+
+	for {
+		conn, err := listener.Accept()
 		if err != nil {
-			log.Println(err)
+			fmt.Println("Error:", err)
 			return
 		}
-	})
 
-	_ = app
+		go Handle(conn, app)
+	}
+}
 
-	return
+func Handle(conn net.Conn, app *application.App) {
+	defer conn.Close()
+
+	reader := gosuper.NewReaderSeparatedIterator(conn, []byte("\n"))
+	for reader.Next() {
+		var domain []byte
+		err := reader.Scan(&domain)
+		if err != nil {
+			return
+		}
+
+		log.Println("Domain:", string(domain))
+	}
+
+	fmt.Println("Done")
 }
 
 type Spew = gosuper.SuperQueueConsumerImpl[topics.TopicNewDomain]
